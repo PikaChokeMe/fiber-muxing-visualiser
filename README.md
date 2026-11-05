@@ -20,6 +20,19 @@ desired branch and **/(root)**, and save. `.nojekyll` is included. All applicati
 assets use relative paths, so repository subpaths work. Nothing needs compiling.
 The prototype has not been uploaded or published by this local setup.
 
+## Link previews
+
+`index.html` includes Open Graph and large-image card metadata pointing to
+`assets/lumen-preview-v1.jpg` on the GitHub Pages site. This is a 1200 × 630 JPEG
+screenshot of the actual app mid-transmission, using the four current defaults.
+It is static and does not include visitors' browser-saved messages.
+
+Commit the `assets/` folder along with `index.html`. After Pages deploys, sharing
+the site lets preview services fetch that image directly from GitHub Pages.
+If changing the image later, use a new filename and update both image URLs in
+the metadata, since preview services can retain cached images. Old Discord
+messages are not guaranteed to refresh automatically.
+
 ## Controls
 
 - Add unlimited editable channel rows; each message is UTF-8 encoded, MSB first.
