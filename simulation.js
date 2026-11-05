@@ -79,7 +79,7 @@ export class Simulation {
   add(text = '', wavelength = 530) {
     const channel = { id: this.nextId++, text, wavelength, active: true,
       bits: encodeBits(text), cursor: 0, sequence: 1, loop: 1,
-      pulses: [], receiver: new Receiver(), transmitted: 0 };
+      pulses: [], receiver: new Receiver(), transmitted: 0, lastSent: null };
     this.channels.push(channel);
     return channel;
   }
@@ -91,6 +91,7 @@ export class Simulation {
     ch.cursor = 0;
     ch.sequence++;
     ch.loop = 1;
+    ch.lastSent = null;
     // Already emitted pulses and receiver state are deliberately untouched.
   }
   remove(id) {
@@ -111,6 +112,7 @@ export class Simulation {
         wavelength: ch.wavelength, sentAt: at, arrivesAt: at + this.transit,
         duration: 1/this.rate, bitIndex: ch.cursor, messageBytes: ch.bits.length/8 });
       ch.pulses.push(pulse);
+      ch.lastSent = pulse;
       this.pending.push(pulse);
       ch.transmitted++;
       this.sent++;
@@ -154,6 +156,7 @@ export class Simulation {
       ch.sequence++;
       ch.loop = 1;
       ch.transmitted = 0;
+      ch.lastSent = null;
       ch.receiver = new Receiver();
     }
   }

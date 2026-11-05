@@ -1,5 +1,20 @@
 # Prototype verification — 2026-11-05
 
+## Sender readout and higher rate update
+
+- Increased the per-channel rate selector to 4,096 bits/s.
+- 20 automated checks pass, including exact emitted-bit highlighting across
+  character boundaries, loop boundaries, edits, emoji, combining marks, controls,
+  and a ten-second 4,096 bit/s run with exact transmitted/received counts.
+- Browser stepping verified H remains highlighted through its eighth bit, then
+  e and its first bit become highlighted on the next transmission.
+- Exercised the 4,096 setting in the browser with four channels and the separate
+  view expanded. Playback and subsequent controls remained responsive; no app
+  warnings or errors were observed. This is not a cross-device FPS guarantee.
+- High-density component lanes now use bounded spatial samples; individual
+  simulation bits and decoding remain intact. The display explains this sampling.
+- Existing messages and wavelength choices were preserved.
+
 ## Automated
 
 15 checks pass using Node's test runner. This environment requires running tests

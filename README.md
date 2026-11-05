@@ -23,10 +23,11 @@ The prototype has not been uploaded or published by this local setup.
 ## Controls
 
 - Add unlimited editable channel rows; each message is UTF-8 encoded, MSB first.
-- Enter wavelengths from 200–1600 nm. Visible defaults are 630, 460 and 530 nm.
-- Transmission rate: 1–256 bits per second **per nonempty channel**. Starts at 1.
+- Enter wavelengths from 200–1600 nm. Visible defaults are 630, 460, 530 and 590 nm.
+- Transmission rate: 1–4,096 bits per second **per nonempty channel**. New sessions and Restore examples default to 4; returning visitors retain their saved rate.
 - Pause / Play, Step one bit interval, or explicitly Restart the demonstration.
-- Separate view exposes each channel inside the shared fiber.
+- Sender readouts highlight the current character and its most recently transmitted bit. UTF-8 byte groups stay together for emoji and combining characters; pause and step to inspect them.
+- Separate view exposes each channel inside the shared fiber. At high rates, visual samples are bounded by screen resolution; every bit is still transmitted and decoded.
 - Show invisible wavelengths opts into UV/IR false colors.
 - Messages, wavelength choices, speed, and view preferences persist in localStorage.
 - Restore examples explicitly replaces local messages after confirmation.
@@ -73,6 +74,7 @@ See [data attribution](data/README.md). The in-app explanation includes the sour
 ## Files
 
 - `simulation.js` — deterministic clock, immutable emitted symbols, receiver state.
+- `sender.js` — displayed characters mapped to their UTF-8 bits and sender position.
 - `color.js` and `data/` — spectral data and color conversion.
 - `app.js` — editable controls and Canvas visualization.
 - `index.html`, `style.css` — layout and presentation.

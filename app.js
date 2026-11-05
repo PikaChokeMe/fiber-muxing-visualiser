@@ -1,17 +1,20 @@
 import { Simulation, readableText, byteLabel } from './simulation.js';
 import { displayColor, signalXYZ, sumXYZ, swatch, isInvisible } from './color.js';
+import { senderPosition, visibleCharacters } from './sender.js';
 
 const $ = selector => document.querySelector(selector);
-const rates = [1, 2, 4, 8, 16, 32, 64, 128, 256];
+const rates = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096];
+const defaultRate = 4;
 const defaults = [
   { text: 'Hello world', wavelength: 630 },
   { text: 'A cat is fine too desu desu desu', wavelength: 460 },
-  { text: "This town ain’t big enough for the two of us", wavelength: 530 }
+  { text: 'I liked you like i like the dark.', wavelength: 530 },
+  { text: 'Did you know? The thorns are the rose too.', wavelength: 590 }
 ];
 const storageKey = 'lumen-playground-v1';
 let saved;
 try { saved = JSON.parse(localStorage.getItem(storageKey)); } catch { /* Private browsing can disable storage. */ }
-const sim = new Simulation({ rate: rates.includes(saved?.rate) ? saved.rate : 1 });
+const sim = new Simulation({ rate: rates.includes(saved?.rate) ? saved.rate : defaultRate });
 const initial = Array.isArray(saved?.channels) ? saved.channels.filter(c => typeof c.text === 'string' && Number.isFinite(c.wavelength) && c.wavelength >= 200 && c.wavelength <= 1600) : defaults;
 initial.forEach(c => sim.add(c.text, c.wavelength));
 let playing = true;
@@ -52,6 +55,11 @@ function createSender(ch) {
   card.innerHTML = `<div class="card-top"><span class="channel-label"><i class="channel-dot"></i>CHANNEL ${String(ch.id).padStart(2, '0')}</span><span class="channel-meta byte-count"></span><button class="remove-button" aria-label="Remove channel ${ch.id}" title="Stop sending; allow in-flight bits to arrive">×</button></div><textarea class="message-input" aria-label="Message for channel ${ch.id}" spellcheck="false" placeholder="Give this wavelength something to say…"></textarea><div class="wave-control"><span class="swatch" aria-hidden="true"></span><label for="wave-${ch.id}">λ</label><input class="wavelength-input" id="wave-${ch.id}" type="number" min="200" max="1600" step="1" aria-label="Wavelength in nanometers for channel ${ch.id}"><label for="wave-${ch.id}">nm</label><span class="hex"></span></div><div class="spectrum" aria-hidden="true"><span class="spectrum-marker"></span></div><div class="card-bottom"><span class="wave-note"></span><span class="tx-progress"></span></div>`;
   const input = card.querySelector('textarea');
   input.value = ch.text;
+  const readout = document.createElement('div');
+  readout.className = 'tx-readout';
+  readout.setAttribute('aria-label', `Transmitting character and bits for channel ${ch.id}`);
+  readout.innerHTML = '<div class="tx-readout-heading"><span>AT THE TRANSMITTER</span><span class="tx-bit-position"></span></div><div class="tx-text" dir="ltr"><span class="tx-before"></span><mark class="tx-character"></mark><span class="tx-after"></span></div><div class="tx-bits" aria-label="UTF-8 bits of the current character"></div>';
+  input.after(readout);
   input.addEventListener('input', () => { sim.edit(ch.id, { text: input.value }); persist(); updateUI(); });
   const wave = card.querySelector('.wavelength-input');
   wave.value = ch.wavelength;
@@ -67,6 +75,48 @@ function createSender(ch) {
     notice('Channel stopped. Already-sent bits will finish their journey.');
   });
   return card;
+}
+function updateSenderReadout(ch, sender) {
+  const readout = sender.querySelector('.tx-readout');
+  const position = senderPosition(ch);
+  const character = position?.character;
+  const charKey = character ? `${ch.text}\u0000${character.startText}` : '';
+  const textStrip = readout.querySelector('.tx-text');
+  const mark = readout.querySelector('.tx-character');
+  const bits = readout.querySelector('.tx-bits');
+  if (readout._characterKey !== charKey) {
+    readout._characterKey = charKey;
+    readout.querySelector('.tx-before').textContent = character ? visibleCharacters(ch.text.slice(0, character.startText)) : '';
+    mark.textContent = character ? visibleCharacters(character.text) : '';
+    readout.querySelector('.tx-after').textContent = character ? visibleCharacters(ch.text.slice(character.endText)) : 'Type a message to see its bits';
+    bits.replaceChildren();
+    if (character) for (let start = 0; start < character.bits.length; start += 8) {
+      const group = document.createElement('span'); group.className = 'tx-byte';
+      for (let i = start; i < start + 8; i++) {
+        const digit = document.createElement('span'); digit.className = 'tx-bit';
+        digit.textContent = character.bits[i]; digit.dataset.bit = i;
+        group.append(digit);
+      }
+      bits.append(group);
+    }
+    textStrip.scrollLeft = character ? Math.max(0, mark.offsetLeft - textStrip.clientWidth / 2 + mark.offsetWidth / 2) : 0;
+  }
+  const waiting = !position || position.bit === null;
+  readout.classList.toggle('waiting', waiting);
+  readout.querySelector('.tx-bit-position').textContent = !position ? 'IDLE' : waiting
+    ? `READY · ${character.bits.length} BITS`
+    : `BIT ${position.bit + 1} / ${character.bits.length}`;
+  const oldBit = bits.querySelector('[aria-current="true"]');
+  const newBit = waiting ? null : bits.querySelector(`[data-bit="${position.bit}"]`);
+  if (oldBit !== newBit) {
+    if (oldBit) { oldBit.removeAttribute('aria-current'); oldBit.removeAttribute('title'); }
+    if (newBit) {
+      newBit.setAttribute('aria-current', 'true');
+      newBit.title = 'Most recently transmitted bit';
+      bits.scrollTop = Math.max(0, newBit.offsetTop - bits.clientHeight / 2);
+    }
+  }
+  readout.title = 'Highlight follows the most recently transmitted bit. At high rates, the display samples the stream. Pause and Step to inspect each bit.';
 }
 function createReceiver(ch) {
   const card = document.createElement('article');
@@ -126,7 +176,8 @@ function updateUI() {
       const note = sender.querySelector('.wave-note');
       note.textContent = duplicate ? 'Duplicate λ · ideal channel' : isInvisible(ch.wavelength) ? (ch.wavelength < 380 ? 'UV' : 'IR') + ' · false-color swatch' : 'Visible · display mapped';
       note.classList.toggle('warning', duplicate || isInvisible(ch.wavelength));
-      sender.querySelector('.tx-progress').textContent = ch.bits.length ? `bit ${ch.cursor} / ${ch.bits.length}` : 'idle';
+      sender.querySelector('.tx-progress').textContent = ch.bits.length ? `bit ${ch.lastSent ? ch.lastSent.bitIndex + 1 : 0} / ${ch.bits.length}` : 'idle';
+      updateSenderReadout(ch, sender);
     }
     const receiver = receiverNodes.get(ch.id), rx = ch.receiver;
     receiver.style.setProperty('--channel', color);
@@ -175,7 +226,11 @@ $('#play').addEventListener('click', () => setPlaying(!playing));
 $('#step').addEventListener('click', () => { setPlaying(false); sim.advance(1/sim.rate); updateUI(); draw(); });
 $('#restart').addEventListener('click', () => { sim.restart(); updateUI(); draw(); notice('Demonstration restarted.'); });
 $('#speed').value = rates.indexOf(sim.rate);
-function updateSpeedLabel() { $('#speed-value').innerHTML = `${sim.rate} <small>${sim.rate === 1 ? 'bit' : 'bits'}/s per channel</small>`; }
+$('#speed').max = rates.length - 1;
+function updateSpeedLabel() {
+  $('#speed-value').innerHTML = `${sim.rate.toLocaleString()} <small>${sim.rate === 1 ? 'bit' : 'bits'}/s per channel</small>`;
+  $('#speed').setAttribute('aria-valuetext', `${sim.rate.toLocaleString()} bits per second per channel`);
+}
 updateSpeedLabel();
 $('#speed').addEventListener('input', event => { sim.setRate(rates[Number(event.target.value)]); updateSpeedLabel(); updateUI(); persist(); });
 $('#add-channel').addEventListener('click', () => {
@@ -201,11 +256,11 @@ $('#reset-defaults').addEventListener('click', () => {
 $('#reset-cancel').addEventListener('click', () => $('#reset-dialog').close());
 $('#reset-confirm').addEventListener('click', () => {
   $('#reset-dialog').close();
-  sim.channels = []; sim.nextId = 1; defaults.forEach(c => sim.add(c.text, c.wavelength)); sim.setRate(1); sim.restart();
+  sim.channels = []; sim.nextId = 1; defaults.forEach(c => sim.add(c.text, c.wavelength)); sim.setRate(defaultRate); sim.restart();
   senderNodes.forEach(n => n.remove()); senderNodes.clear();
   receiverNodes.forEach(n => n.remove()); receiverNodes.clear();
   laneNodes.forEach(n => n.remove()); laneNodes.clear(); structure = '!';
-  $('#speed').value = 0; updateSpeedLabel(); syncStructure(); updateUI(); persist(); draw();
+  $('#speed').value = rates.indexOf(defaultRate); updateSpeedLabel(); syncStructure(); updateUI(); persist(); draw();
 });
 document.addEventListener('visibilitychange', () => { lastFrame = null; });
 
@@ -270,9 +325,10 @@ function draw() {
   ctx.globalAlpha=1;
   // Empty slots and sequence boundaries remain visible without inventing light for zeros.
   const unique=new Map();
-  for(const ch of sim.channels) for(const p of ch.pulses) {
+  markers: for(const ch of sim.channels) for(const p of ch.pulses) {
     const f=(sim.time-p.sentAt)/sim.transit;
     if(f>=0 && f<=1) {const key=p.sentAt.toFixed(7);const old=unique.get(key);unique.set(key,{f,start:p.start||old?.start});}
+    if(unique.size>45) break markers;
   }
   if(unique.size<=45) for(const {f,start} of unique.values()) {
     const x=startX+f*length;
@@ -299,6 +355,16 @@ function draw() {
   if(expanded) for(const ch of sim.channels) {
     const {ctx:lc,w:lw,h:lh}=canvasContext(laneNodes.get(ch.id).querySelector('canvas'));
     rounded(lc,0,lh/2-3,lw,6,3,'#0a111c','#26364a');
+    // Bound drawing work when individual symbols are narrower than screen pixels.
+    // Like the combined beam, this is a spatial sample; every bit is still decoded.
+    if(ch.pulses.length > lw) {
+      for(let x=0;x<lw;x+=2) {
+        const pulse=sim.signalAt(ch,sim.time-(x+1)/lw*sim.transit);
+        lc.fillStyle=pulse?.bit ? displayColor(xyzFor(pulse.wavelength)).hex : '#111c29';
+        lc.fillRect(x,lh/2-5,Math.min(2,lw-x),10);
+      }
+      continue;
+    }
     for(const p of ch.pulses) {
       const right=(sim.time-p.sentAt)/sim.transit*lw;
       const left=(sim.time-p.sentAt-p.duration)/sim.transit*lw;
